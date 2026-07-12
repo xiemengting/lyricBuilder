@@ -9,7 +9,7 @@ from mutagen.id3 import ID3
 
 from .models import Clue
 
-DEFAULT_EXTS = [".mp3", ".m4a", ".aac", ".alac", ".flac", ".wav"]
+DEFAULT_EXTS = [".mp3", ".m4a", ".aac", ".alac", ".flac", ".wav", ".aiff"]
 
 _DASH_SPLIT = re.compile(r"\s*[-－—]\s*")
 
@@ -70,6 +70,24 @@ class Scanner:
                 title = tit2[0].text[0]
             if tpe1 and tpe1[0].text:
                 artist = tpe1[0].text[0]
+            if title or artist:
+                return title, artist, "tag"
+        elif path.suffix.lower() == ".aiff":
+            # AIFF stores ID3 in an ID3 chunk; MutagenFile(easy=True) does
+            # not surface them as easy keys, so read frames via mutagen.aiff.
+            try:
+                from mutagen.aiff import AIFF
+                tags = AIFF(path).tags
+            except Exception:
+                return None, None, "none"
+            title = artist = None
+            if tags is not None:
+                tit2 = tags.getall("TIT2")
+                tpe1 = tags.getall("TPE1")
+                if tit2 and tit2[0].text:
+                    title = tit2[0].text[0]
+                if tpe1 and tpe1[0].text:
+                    artist = tpe1[0].text[0]
             if title or artist:
                 return title, artist, "tag"
         return None, None, "none"
