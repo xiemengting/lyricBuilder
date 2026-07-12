@@ -1,5 +1,9 @@
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, message="'aifc' is deprecated")
+import aifc
 from pathlib import Path
 from mutagen.mp3 import MP3
+from mutagen.aiff import AIFF
 from mutagen.id3 import ID3, TIT2, TPE1
 from mutagen.mp4 import MP4
 
@@ -70,3 +74,48 @@ def test_recursive_scan(tmp_path):
     _make_mp3(p, "T", "A")
     clues = Scanner(tmp_path).scan()
     assert len(clues) == 1
+
+
+def _make_aiff(path: Path, title: str | None, artist: str | None):
+    # aifc writes a valid AIFF container with real audio data; mutagen.aiff
+    # then loads it and we attach ID3 frames. (aifc is deprecated in 3.11
+    # but present; suppress the import-time warning.)
+    with open(path, "wb") as fh:
+        with aifc.open(fh, "w") as w:
+            w.aiff(); w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000)
+            w.writeframesraw(b"\x00\x00")
+    a = AIFF(path)
+    if a.tags is None:
+        a.add_tags()
+    if title:
+        a.tags.add(TIT2(encoding=3, text=[title]))
+    if artist:
+        a.tags.add(TPE1(encoding=3, text=[artist]))
+    a.save()
+
+
+def test_aiff_reads_id3_tags(tmp_path):
+    p = tmp_path / "track.aiff"
+    _make_aiff(p, "情書", "腰樂隊")
+    clues = Scanner(tmp_path).scan()
+    assert len(clues) == 1
+    assert clues[0].fmt == "aiff"
+    assert clues[0].title == "情書"
+    assert clues[0].artist == "腰樂隊"
+    assert clues[0].source == "tag"
+
+
+def test_aiff_falls_back_to_filename_when_no_tag(tmp_path):
+    p = tmp_path / "腰樂隊 - 情書.aiff"
+    _make_aiff(p, None, None)
+    clues = Scanner(tmp_path).scan()
+    c = clues[0]
+    assert c.fmt == "aiff"
+    assert c.title == "情書"
+    assert c.artist == "腰樂隊"
+    assert c.source == "filename"
+
+
+def test_aiff_in_default_exts():
+    from lyricbuilder.scanner import DEFAULT_EXTS
+    assert ".aiff" in DEFAULT_EXTS

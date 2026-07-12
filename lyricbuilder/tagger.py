@@ -4,12 +4,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from mutagen import File as MutagenFile
+from mutagen.aiff import AIFF
 from mutagen.id3 import USLT, ID3
 from mutagen.mp4 import MP4
 
 from .models import Clue, LyricResult
 
-EMBED_SUPPORTED = {"mp3", "m4a", "aac", "alac", "flac"}
+EMBED_SUPPORTED = {"mp3", "m4a", "aac", "alac", "flac", "aiff"}
 
 
 class Tagger:
@@ -53,6 +54,8 @@ class Tagger:
                 return self._embed_mp4(clue.path, text)
             if clue.fmt == "flac":
                 return self._embed_flac(clue.path, text)
+            if clue.fmt == "aiff":
+                return self._embed_aiff(clue.path, text)
         except Exception:
             return "failed"
         return "failed"
@@ -81,4 +84,13 @@ class Tagger:
         audio = MutagenFile(path)
         audio["lyrics"] = text
         audio.save()
+        return "written"
+
+    @staticmethod
+    def _embed_aiff(path: Path, text: str) -> str:
+        a = AIFF(path)
+        if a.tags is None:
+            a.add_tags()
+        a.tags.setall("USLT", [USLT(encoding=3, lang="chi", desc="", text=text)])
+        a.save()
         return "written"

@@ -1,4 +1,6 @@
+import pytest
 import respx
+from lyricbuilder.models import TransientSourceError
 from sources.web_scrape import WebScrapeSource
 
 SEARCH = "https://example-lyrics.test/search"
@@ -25,10 +27,10 @@ def test_unmatched_when_selector_misses():
 
 
 @respx.mock
-def test_unmatched_on_http_error():
+def test_raises_transient_on_http_error():
     respx.get("https://example-lyrics.test/search").respond(500)
-    r = WebScrapeSource(retries=1).get("A", "B")
-    assert r.matched is False
+    with pytest.raises(TransientSourceError):
+        WebScrapeSource(retries=1).get("A", "B")
 
 
 def test_unmatched_without_title():

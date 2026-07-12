@@ -1,6 +1,7 @@
+import pytest
 import httpx
 import respx
-from lyricbuilder.models import LyricResult
+from lyricbuilder.models import LyricResult, TransientSourceError
 from sources.lrclib import LRCLibSource
 
 BASE = "https://lrclib.net/api/get"
@@ -37,16 +38,16 @@ def test_returns_unmatched_on_404():
 
 
 @respx.mock
-def test_returns_unmatched_on_timeout():
+def test_raises_transient_on_timeout():
     respx.get(BASE).mock(side_effect=httpx.TimeoutException("slow"))
     src = LRCLibSource(timeout=0.01, retries=1)
-    r = src.get("A", "B")
-    assert r.matched is False
+    with pytest.raises(TransientSourceError):
+        src.get("A", "B")
 
 
 @respx.mock
-def test_returns_unmatched_on_429_after_retry():
+def test_raises_transient_on_429_after_retry():
     respx.get(BASE).respond(429)
     src = LRCLibSource(timeout=1.0, retries=2)
-    r = src.get("A", "B")
-    assert r.matched is False
+    with pytest.raises(TransientSourceError):
+        src.get("A", "B")

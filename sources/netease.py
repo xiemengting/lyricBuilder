@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 import httpx
 
-from lyricbuilder.models import LyricResult
+from lyricbuilder.models import LyricResult, TransientSourceError
 
 SEARCH_URL = "https://music.163.com/api/search/get"
 LYRIC_URL = "https://music.163.com/api/song/lyric"
@@ -31,38 +31,48 @@ class NeteaseSource:
         return LyricResult(True, rtype, lyric, self.name, query)
 
     def _search(self, title: str, artist: str | None) -> str | None:
+        """Returns song_id on hit, None on confirmed miss (200 with empty results).
+
+        Raises TransientSourceError on timeout / 429-after-retries / 5xx / bad JSON
+        / connection error — must NOT be negative-cached.
+        """
         term = f"{title} {artist}" if artist else title
         for attempt in range(self._retries + 1):
             try:
                 resp = self._client.get(SEARCH_URL, params={"s": term, "type": 1, "limit": 5})
-            except httpx.HTTPError:
-                return None
+            except httpx.HTTPError as e:
+                raise TransientSourceError("netease search failed") from e
             if resp.status_code == 200:
                 try:
                     songs = resp.json().get("result", {}).get("songs", [])
-                except ValueError:
-                    return None
-                return str(songs[0]["id"]) if songs else None
+                except ValueError as e:
+                    raise TransientSourceError("netease search bad JSON") from e
+                return str(songs[0]["id"]) if songs else None  # empty = confirmed miss
             if resp.status_code == 429 and attempt < self._retries:
                 time.sleep(0.5 * (2 ** attempt)); continue
-            return None
-        return None
+            raise TransientSourceError(f"netease search status {resp.status_code}")
+        raise TransientSourceError("netease search 429 retries exhausted")
 
     def _fetch_lyric(self, song_id: str) -> str | None:
+        """Returns lyric text on hit, None on confirmed miss (200 with no lrc).
+
+        Raises TransientSourceError on timeout / 429-after-retries / 5xx / bad JSON
+        / connection error — must NOT be negative-cached.
+        """
         for attempt in range(self._retries + 1):
             try:
                 resp = self._client.get(LYRIC_URL, params={"id": song_id, "lv": 1, "tv": -1})
-            except httpx.HTTPError:
-                return None
+            except httpx.HTTPError as e:
+                raise TransientSourceError("netease lyric fetch failed") from e
             if resp.status_code == 200:
                 try:
-                    return (resp.json().get("lrc") or {}).get("lyric")
-                except ValueError:
-                    return None
+                    return (resp.json().get("lrc") or {}).get("lyric")  # None = confirmed no-lyric
+                except ValueError as e:
+                    raise TransientSourceError("netease lyric bad JSON") from e
             if resp.status_code == 429 and attempt < self._retries:
                 time.sleep(0.5 * (2 ** attempt)); continue
-            return None
-        return None
+            raise TransientSourceError(f"netease lyric status {resp.status_code}")
+        raise TransientSourceError("netease lyric 429 retries exhausted")
 
 
 def _has_timestamps(text: str) -> bool:
