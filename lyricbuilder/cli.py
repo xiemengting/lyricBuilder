@@ -53,7 +53,7 @@ def scan(
     if not src_dir or not src_dir.exists():
         console.print(f"[red]source_dir not found:[/red] {src_dir}")
         raise typer.Exit(code=2)
-    cache = Cache(Path(cfg.cache_dir).expanduser())
+    cache = None if dry_run else Cache(Path(cfg.cache_dir).expanduser())
     fetcher = LyricFetcher(_build_sources(cfg, dry_run), cache=cache)
     tagger = Tagger(dry_run=dry_run, force=force, embed=not no_embed, lrc=not no_lrc)
     counters = Counter()
@@ -84,7 +84,6 @@ def stats(
     """Show cache hit stats and unmatched list."""
     cfg = load_config()
     cdir = Path(cache_dir or cfg.cache_dir).expanduser()
-    cache = Cache(cdir)
     import json
     idx = json.loads((cdir / "index.json").read_text(encoding="utf-8")) if (cdir / "index.json").exists() else {}
     table = Table(title="cache stats"); table.add_column("metric"); table.add_column("count")
