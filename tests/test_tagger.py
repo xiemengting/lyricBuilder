@@ -1,6 +1,10 @@
+import warnings
 from pathlib import Path
 
+warnings.filterwarnings("ignore", category=DeprecationWarning, message="'aifc' is deprecated")
+import aifc
 from mutagen import File as MutagenFile
+from mutagen.aiff import AIFF
 from mutagen.id3 import ID3
 
 from lyricbuilder.models import Clue, LyricResult
@@ -89,3 +93,27 @@ def test_unmatched_result_writes_nothing(tmp_path):
     out = Tagger().apply(clue, r)
     assert not (tmp_path / "song.lrc").exists()
     assert out["lrc"] == "skipped" and out["embed"] == "skipped"
+
+
+def _make_aiff(path: Path):
+    # Valid AIFF container via stdlib aifc + empty ID3 block (mirror of _make_mp3).
+    with open(path, "wb") as fh:
+        with aifc.open(fh, "w") as w:
+            w.aiff(); w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000)
+            w.writeframesraw(b"\x00\x00")
+    AIFF(path).save()  # ensure an ID3 chunk exists for embedding
+
+
+def test_embeds_uslt_into_aiff(tmp_path):
+    p = tmp_path / "song.aiff"; _make_aiff(p)
+    clue = Clue(p, "aiff", "T", "A", "tag")
+    r = LyricResult(True, "lrc", "[00:01.00]line\n[00:03.00]two", "lrclib", {})
+    out = Tagger().apply(clue, r)
+    assert out["embed"] == "written"
+    uslt = AIFF(p).tags.getall("USLT")
+    assert uslt and uslt[0].text == "[00:01.00]line\n[00:03.00]two"
+
+
+def test_aiff_in_embed_supported():
+    from lyricbuilder.tagger import EMBED_SUPPORTED
+    assert "aiff" in EMBED_SUPPORTED
