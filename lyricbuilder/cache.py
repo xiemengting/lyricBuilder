@@ -1,6 +1,7 @@
 """Local result cache for matched lyrics, keyed by normalized title+artist."""
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -28,9 +29,12 @@ class Cache:
 
     def _load(self) -> dict:
         try:
-            return json.loads(self.index_path.read_text(encoding="utf-8"))
+            data = json.loads(self.index_path.read_text(encoding="utf-8"))
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
+        if not isinstance(data, dict):
+            return {}
+        return data
 
     def _save(self) -> None:
         tmp = self.index_path.with_suffix(".json.tmp")
@@ -38,7 +42,8 @@ class Cache:
         tmp.replace(self.index_path)
 
     def get(self, title: str, artist: str) -> dict | None:
-        return self._index.get(self.key(title, artist))
+        value = self._index.get(self.key(title, artist))
+        return copy.deepcopy(value) if value is not None else None
 
     def put(self, title: str, artist: str, result: dict) -> None:
         self._index[self.key(title, artist)] = result

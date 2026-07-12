@@ -1,5 +1,3 @@
-import json
-from pathlib import Path
 from lyricbuilder.cache import Cache
 
 
@@ -49,3 +47,17 @@ def test_concurrent_write_same_key_tolerant(tmp_path):
     for _ in range(5):
         c.put("Same", "Artist", {"matched": True, "type": "lrc", "text": "t", "source": "s"})
     assert c.get("Same", "Artist")["text"] == "t"
+
+
+def test_get_returns_independent_copy(tmp_path):
+    c = Cache(tmp_path)
+    result = {"matched": True, "type": "lrc", "text": "[00:00]hi", "source": "lrclib"}
+    c.put("晴天", "周杰伦", result)
+    got = c.get("晴天", "周杰伦")
+    assert got == result
+    got["text"] = "MUTATED"
+    got["matched"] = False
+    again = c.get("晴天", "周杰伦")
+    assert again == result
+    assert again["text"] == "[00:00]hi"
+    assert again["matched"] is True
