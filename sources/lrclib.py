@@ -13,7 +13,7 @@ class LRCLibSource:
     name = "lrclib"
 
     def __init__(self, client: httpx.Client | None = None, timeout: float = 8.0, retries: int = 2):
-        self._client = client or httpx.Client(timeout=timeout)
+        self._client = client or httpx.Client(timeout=timeout, trust_env=False)
         self._timeout = timeout
         self._retries = retries
 
