@@ -1,10 +1,10 @@
-import warnings  # add to existing imports at top
+import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning, message="'aifc' is deprecated")
-import aifc       # add to existing imports at top
+import aifc
 from pathlib import Path
 from mutagen.mp3 import MP3
-from mutagen.aiff import AIFF  # add to existing imports at top
-from mutagen.id3 import ID3, TIT2, TPE1  # TIT2/TPE1 already? no — only ID3 is imported at line 3; add TIT2, TPE1
+from mutagen.aiff import AIFF
+from mutagen.id3 import ID3, TIT2, TPE1
 from mutagen.mp4 import MP4
 
 from lyricbuilder.scanner import Scanner
