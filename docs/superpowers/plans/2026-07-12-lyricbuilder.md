@@ -58,7 +58,7 @@ dev = ["pytest>=8.0", "respx>=0.21", "pytest-tmpfiles>=1.0"]
 
 [build-system]
 requires = ["setuptools>=68"]
-build-backend = "setuptools.backends._legacy:_backend"
+build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -303,6 +303,17 @@ def _make_mp3(path: Path, title: str | None, artist: str | None):
     audio.tags.add(TPE1(encoding=3, text=[artist] if artist else []))
     audio.save()
 
+# NOTE for implementer: an empty-bytes file is NOT a valid MPEG stream,
+# so `MP3(path)` above may raise on it. If the RED step fails with a
+# mutagen parse error, make the fixture robust: write ID3 tags directly
+# via `mutagen.id3.ID3(path)` (works without MPEG audio), and ensure the
+# scanner reads them back — `MutagenFile(path, easy=True)` returns an
+# EasyMP3 whose `.tags` is populated from the ID3 block. If that returns
+# None on an ID3-only file, have `_from_tags` fall back to
+# `mutagen.id3.ID3(path)` for .mp3. The behavior under test is what
+# matters (tag read + filename fallback); pick whichever fixture approach
+# makes the tests pass cleanly.
+
 
 def _make_m4a(path: Path, title: str | None, artist: str | None):
     # minimal valid m4a via MP4 on empty file is tricky; use mutagen helper
@@ -480,9 +491,7 @@ BASE = "https://lrclib.net/api/get"
 
 @respx.mock
 def test_returns_synced_lrc_on_hit():
-    respx.get(BASE).params.update({"track_name": "晴天", "artist_name": "周杰伦"})
-    route = respx.get(BASE)
-    route.respond(200, json={"syncedLyrics": "[00:00]晴天", "plainLyrics": None})
+    respx.get(BASE).respond(200, json={"syncedLyrics": "[00:00]晴天", "plainLyrics": None})
     src = LRCLibSource()
     r = src.get("晴天", "周杰伦")
     assert r.matched is True
@@ -627,7 +636,6 @@ LYRIC = "https://music.163.com/api/song/lyric"
 @respx.mock
 def test_returns_synced_lrc():
     respx.get(SEARCH).respond(200, json={"result": {"songs": [{"id": 42, "name": "晴天", "artists": [{"name": "周杰伦"}]}]}})
-    respx.get(LYRIC).params.update({"id": "42", "lv": "1", "tv": "-1"})
     respx.get(LYRIC).respond(200, json={"lrc": {"lyric": "[00:01]晴天"}, "tlyric": {"lyric": None}})
     r = NeteaseSource().get("晴天", "周杰伦")
     assert r.matched and r.type == "lrc" and r.source == "netease"
@@ -773,7 +781,7 @@ def test_returns_plain_from_parsed_html():
     html = """
     <div class="lyrics"><p>line one</p><p>line two</p></div>
     """
-    respx.get(respx.M).respond(200, text=html)
+    respx.get("https://example-lyrics.test/search").respond(200, text=html)
     r = WebScrapeSource().get("晴天", "周杰伦")
     assert r.matched is True
     assert r.type == "plain"
@@ -783,14 +791,14 @@ def test_returns_plain_from_parsed_html():
 
 @respx.mock
 def test_unmatched_when_selector_misses():
-    respx.get(respx.M).respond(200, text="<html><body>nope</body></html>")
+    respx.get("https://example-lyrics.test/search").respond(200, text="<html><body>nope</body></html>")
     r = WebScrapeSource().get("A", "B")
     assert r.matched is False
 
 
 @respx.mock
 def test_unmatched_on_http_error():
-    respx.get(respx.M).respond(500)
+    respx.get("https://example-lyrics.test/search").respond(500)
     r = WebScrapeSource(retries=1).get("A", "B")
     assert r.matched is False
 

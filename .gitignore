@@ -12,3 +12,6 @@ build/
 
 # tool local state
 .lyricbuilder/
+
+# superpowers SDD scratch (briefs, review packages, ledger)
+.superpowers/
