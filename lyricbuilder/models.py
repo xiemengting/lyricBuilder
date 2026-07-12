@@ -4,6 +4,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+class TransientSourceError(Exception):
+    """A source failed transiently (timeout / 429-after-retries / 5xx / connection error).
+
+    Distinct from a *confirmed* miss (the source responded and definitively has no
+    lyric). Confirmed misses return LyricResult(matched=False) and are cacheable;
+    transient failures raise this and must NOT be negative-cached, so a later run
+    can retry.
+    """
+
+
 @dataclass
 class Clue:
     path: Path

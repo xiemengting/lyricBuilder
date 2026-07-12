@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 import httpx
 
-from lyricbuilder.models import LyricResult
+from lyricbuilder.models import LyricResult, TransientSourceError
 
 BASE_URL = "https://lrclib.net/api/get"
 
@@ -37,18 +37,25 @@ class LRCLibSource:
         return LyricResult(matched=False, type=None, text=None, source=self.name, query=query)
 
     def _request(self, params: dict) -> dict | None:
+        """Returns parsed JSON on 200, None on a confirmed miss (404).
+
+        Raises TransientSourceError on timeout / 429-after-retries / 5xx / bad JSON
+        / connection error — these must NOT be negative-cached.
+        """
         for attempt in range(self._retries + 1):
             try:
                 resp = self._client.get(BASE_URL, params=params)
-            except httpx.HTTPError:
-                return None
+            except httpx.HTTPError as e:
+                raise TransientSourceError("lrclib request failed") from e
             if resp.status_code == 200:
                 try:
                     return resp.json()
-                except ValueError:
-                    return None
+                except ValueError as e:
+                    raise TransientSourceError("lrclib returned bad JSON") from e
+            if resp.status_code == 404:
+                return None  # confirmed miss — cacheable
             if resp.status_code == 429 and attempt < self._retries:
                 time.sleep(0.5 * (2 ** attempt))
                 continue
-            return None
-        return None
+            raise TransientSourceError(f"lrclib returned status {resp.status_code}")
+        raise TransientSourceError("lrclib 429 retries exhausted")

@@ -72,6 +72,23 @@ def test_negative_result_cached(tmp_path):
     assert A.calls == 1
 
 
+def test_transient_failure_not_cached(tmp_path):
+    from lyricbuilder.models import TransientSourceError
+    class Flaky:
+        name = "flaky"
+        calls = 0
+        def get(self, t, a):
+            Flaky.calls += 1
+            raise TransientSourceError("timeout")
+    cache = Cache(tmp_path)
+    clue = Clue(Path("s.mp3"), "mp3", "T", "A", "tag")
+    f = LyricFetcher([Flaky()], cache=cache)
+    r1 = f.fetch(clue)
+    assert r1.matched is False              # degrades to unmatched, never aborts
+    r2 = f.fetch(clue)
+    assert Flaky.calls == 2                 # NOT cached → retried on next run
+
+
 def test_none_clue_returns_unmatched_without_calling_sources():
     class Boom:
         name = "b"
