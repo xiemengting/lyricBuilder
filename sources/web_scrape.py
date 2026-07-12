@@ -5,7 +5,7 @@ import time
 import httpx
 from bs4 import BeautifulSoup
 
-from lyricbuilder.models import LyricResult
+from lyricbuilder.models import LyricResult, TransientSourceError
 
 
 class WebScrapeSource:
@@ -28,18 +28,23 @@ class WebScrapeSource:
         return LyricResult(True, "plain", text, self.name, query)
 
     def _fetch(self, title: str, artist: str | None) -> str | None:
+        """Returns page HTML on 200 (confirmed response; selector miss is in _parse).
+
+        Raises TransientSourceError on timeout / 429-after-retries / 5xx / connection
+        error — must NOT be negative-cached.
+        """
         url = f"https://example-lyrics.test/search?q={title}"
         for attempt in range(self._retries + 1):
             try:
                 resp = self._client.get(url)
-            except httpx.HTTPError:
-                return None
+            except httpx.HTTPError as e:
+                raise TransientSourceError("web_scrape fetch failed") from e
             if resp.status_code == 200:
                 return resp.text
             if resp.status_code == 429 and attempt < self._retries:
                 time.sleep(0.5 * (2 ** attempt)); continue
-            return None
-        return None
+            raise TransientSourceError(f"web_scrape status {resp.status_code}")
+        raise TransientSourceError("web_scrape 429 retries exhausted")
 
     @staticmethod
     def _parse(html: str) -> str | None:

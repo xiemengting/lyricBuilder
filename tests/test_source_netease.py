@@ -1,4 +1,6 @@
+import pytest
 import respx
+from lyricbuilder.models import TransientSourceError
 from sources.netease import NeteaseSource
 
 SEARCH = "https://music.163.com/api/search/get"
@@ -29,7 +31,7 @@ def test_unmatched_when_search_empty():
 
 
 @respx.mock
-def test_unmatched_on_http_error():
+def test_raises_transient_on_http_error():
     respx.get(SEARCH).respond(500)
-    r = NeteaseSource(retries=1).get("A", "B")
-    assert r.matched is False
+    with pytest.raises(TransientSourceError):
+        NeteaseSource(retries=1).get("A", "B")
