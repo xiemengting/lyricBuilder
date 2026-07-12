@@ -20,6 +20,7 @@
 | 运行方式 | CLI 全自动 + `--dry-run` 预览 |
 | 歌词类型 | 同步 LRC 优先，找不到时纯文本兜底 |
 | 技术栈 | Python |
+| Skill | 项目内薄包装 CLI，让 agent 能自动调用 |
 
 ## 三、方案选型
 
@@ -45,6 +46,7 @@ lyricBuilder/
 │   ├── lrclib.py
 │   ├── netease.py
 │   └── web_scrape.py
+├── .claude/skills/lyricbuilder/SKILL.md   # 薄包装 CLI 的 agent 操作手册
 ├── docs/superpowers/specs/
 ├── tests/
 ├── pyproject.toml
@@ -195,3 +197,24 @@ lyricbuilder config show|init   # 初始化/查看配置
 - 爬取兜底给单独开关 `[sources] scrape`——可一键关掉只走 API，规避爬虫脆弱性/合规顾虑。
 - `--no-embed` / `--no-lrc` 临时只要其中一种输出，默认两者都做。
 - 代理 `proxy` 默认不设；本机 Surge（`127.0.0.1:6152`）访问受限站点时手动开。httpx 不自动走系统代理。
+
+## 九、Skill：薄包装 CLI
+
+把 lyricBuilder 做成项目内 skill，让任何 agent 自动调用，不必记 CLI 参数。
+
+**位置**：`.claude/skills/lyricbuilder/SKILL.md`（跟 repo 走，clone 即用）。
+
+**触发**（description 决定 agent 何时自动加载）：
+> Use when the user wants to fetch/match lyrics for a music library or folder, or attach lyrics (.lrc + embed) to audio files. Triggers: 匹配歌词、歌词匹配、曲库歌词、match lyrics、fetch LRC.
+
+**skill 的职责**（给 agent 的操作手册，不重新实现逻辑）：
+1. 前置检查：确认 `lyricbuilder` CLI 可用；不可用则在 repo 根目录 `uv sync` 或 `pip install -e .` 装好再继续。
+2. 默认走 dry-run：第一次对新曲库必先 `lyricbuilder scan --source-dir <dir> --dry-run --verbose`，给用户看"会匹配到什么/未匹配哪些"，确认后再实跑。
+3. 实跑：`lyricbuilder scan --source-dir <dir> --verbose`，跑完用 `lyricbuilder stats` 看命中率。
+4. 失败兜底：未匹配的歌引导用户补标签或 `--force` 重试；内嵌失败的歌不重试音频写入、只保留 .lrc（沿用 §6 策略）。
+5. 代理/网络：请求超时多时，提示用户在 `~/.lyricbuilder/config.toml` 设 `proxy = "http://127.0.0.1:6152"`。
+
+**关键决策**
+- skill 不内嵌取词逻辑——重活全在 CLI，skill 只管"怎么用、怎么解读、怎么兜底"。工具升级不用改 skill，agent 不必懂匹配细节。
+- skill 强制"先 dry-run 再实跑"——避免 agent 一上来就改用户音频文件，把 §5 的 `--dry-run` 铁律提到 agent 行为层面。
+- 触发词中英双语——覆盖中文提需求与英文 "match lyrics" 等。
